@@ -1,0 +1,187 @@
+html
+    head
+        title Exploiota.com - IOTA Tangle Explorer
+        meta(name="description" content="Very simple IOTA explorer!")
+        link(rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0-rc.2/css/materialize.min.css")
+        link(href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet")
+        link(href="/css/main.css" rel="stylesheet")
+        meta(name="viewport" content="width=device-width, initial-scale=1.0")
+    body
+        div(id="app")
+            nav
+                div(class="nav-wrapper black")
+                    a(href="/" @click="go('/',$event)" class="brand-logo center") exploiota
+            nav(v-if="showRetry || searching || balance || bundle")
+                div(class="nav-wrapper black")
+                    form(@submit.prevent="search")
+                        div(class="input-field")
+                            input(id="search" v-model="searchInput" type="search" required placeholder="Transaction, Bundle or Address" class="grey-text" pattern="[A-Z9]+" autocomplete="off")
+                            label(class="label-icon" for="search")
+                                i(class="material-icons") search
+                            i(class="material-icons") close
+            main
+                |{{currentRoute}}
+                //-bundle template
+                .container(v-if="bundle")
+                    .row
+                        .col.s12
+                            h3 Bundle
+                    .row(class="bundle")
+                        .col.s12(class="bundleHeader")
+                            a(v-bind:href="'/bundle/'+bundle[0][0].bundle" @click="go('/bundle/'+bundle[0][0].bundle,$event)")
+                                .col.s8(v-html="stylizeHash(bundle[0][0].bundle)")
+                                .col.s4.right-align
+                                    strong {{convertTimestamp(bundle[0][0].timestamp)}}
+                        .col.s12
+                            span(style="display:inline-block;" v-for="transaction in getOutputs(bundle[0])")
+                                a(v-bind:href="'/address/'+transaction.address" @click="go('/address/'+transaction.address,$event)" v-html="stylizeAddress(transaction.address)")
+                                span(style="margin-left:5px;" class="quantity" @click="fiatView=!fiatView"   v-html="stylizeRelevantValueTransfered(transaction.value,'red')")
+                        .col.s12.center
+                            span(style="display:inline-block;")
+                                i(class="small material-icons") arrow_forward
+                        .col.s12(class="right-align")
+                            span(style="display:inline-block;" v-for="transaction in getInputs(bundle[0])" v-if="transaction.value!=0")
+                                .col.s12(v-if="transaction.value!=0")
+                                    a(v-bind:href="'/address/'+transaction.address" @click="go('/address/'+transaction.address,$event)" v-html="stylizeAddress(transaction.address)")
+                                    span(style="margin-left:5px;" class="quantity" @click="fiatView=!fiatView"   v-html="stylizeRelevantValueTransfered(transaction.value,'green')")
+                            //-.row(class="grey-text" v-else)
+                                //-span(v-if="transaction.signatureMessageFragment.match(/^[9]+$/) !== null") ADDRESS ATTACH TRANSACTION
+                                //-span(v-else) SIGNATURE/MESSAGE
+                        .col.s12(style="margin-top:25px;" class="right-align")
+                            a(v-if="!bundleStates[bundle[0][0].bundle] && bundle.length > 1" class="waves-effect  btn blue white-text")
+                                strong {{bundle.length-1}} {{bundle.length-1 === 1 ? 'REATTACHMENT' : 'REATTACHMENTS'}}
+                            a(v-if="!bundleStates[bundle[0][0].bundle] && (validAttachmentsByBundle[bundle[0][0].bundle] < bundle.length && validAttachmentsByBundle[bundle[0][0].bundle] > 0)" style="margin-left: 5px;" class="waves-effect  btn red darken-1 white-text")
+                                strong {{bundle.length - validAttachmentsByBundle[bundle[0][0].bundle]}} Inconsistent {{bundle.length - validAttachmentsByBundle[bundle[0][0].bundle] > 1 ? 'attachments' : 'attachments'}}
+                            span(style="margin-left:5px;" v-if="bundleStates[bundle[0][0].bundle]")
+                                a(class="waves-effect  btn green white-text" v-if="confirmedAttachmentsByBundle[bundle[0][0].bundle] === 1")
+                                    strong Confirmed
+                                a(v-else class="waves-effect  btn green white-text")
+                                    strong {{confirmedAttachmentsByBundle[bundle[0][0].bundle]}}/{{bundle.length}} confirmed attachments
+                            strong(v-else)
+                                a(v-if="validAttachmentsByBundle[bundle[0][0].bundle] > 0" style="margin-left:5px;" class="waves-effect  btn red darken-1 white-text") Pending
+                                a(v-else-if="validAttachmentsByBundle[bundle[0][0].bundle] == 0" style="margin-left:5px;" class="waves-effect  btn red darken-1 white-text tooltipped" data-position="top" data-tooltip="Anatomy of the transaction is wrong, try reattach or broadcast it again") Inconsistent
+                                a(v-else style="margin-left:5px;" class="waves-effect  btn red darken-1 white-text tooltipped" data-position="top" data-tooltip="Funds come from empty addresses") Inconsistent
+                                a(v-if="validAttachmentsByBundle[bundle[0][0].bundle] > 0" style="margin-left:5px;z-index: 1;" @click="reattach(bundle,$event)" class="reattach btn black yellow-text tooltipped pulse" v-on:mouseover="removePulse" data-position="top" data-tooltip="Reattach transaction")
+                                    .preloader-wrapper.small(v-bind:class="{ active: reattaching === bundle[0][0].bundle}")
+                                        i(class="material-icons icon-flipped") replay
+                                a(v-if="reattaching === bundle[0][0].bundle" style="margin-left:5px;" @click="stopReattach()" class="btn red darken-1")
+                                    i(class="material-icons") close
+                                    
+                            strong(style="margin-left:5px;" class="right-align quantity" @click="fiatView=!fiatView"   v-html="stylizeRelevantValueTransfered(getRelevantValueTransfered(bundle[0]),'blue')")
+                //-address template
+                .container
+                    .row(v-if="balance")
+                        .col.s12
+                            h3 Address
+                            span(v-html="stylizeAddress(iota.utils.noChecksum(searchedInput))")
+                            strong(style="margin-left:5px;" class="quantity tooltipped" @click="fiatView=!fiatView"  data-position="top" data-tooltip="Balance" v-html="stylizeRelevantValueTransfered(balance)")
+                            button(style="margin-left:5px;" class="btn black waves-effect white-text tooltipped copy" data-position="top" @click="toast('Address copied!')" data-tooltip="Copy" v-bind:data-clipboard-text="searchedInput")
+                                i(class="material-icons") content_copy
+                            button(style="margin-left:5px;" class="btn black waves-effect white-text" @click="viewQr(searchedInput)" v-bind:data-clipboard-text="searchedInput") QR
+                    .row(v-if="addressResults.length")
+                        h4 {{addressResults.length}} {{addressResults.length == 1 ? 'transaction' : 'transactions'}} since the last snapshot  ({{convertTimestamp(1531123200)}})
+                        .row(v-for="bundle in addressResults" v-if="getRelevantValueTransfered(bundle[0]) != 0" class="bundle")
+                            .col.s12(class="bundleHeader")
+                                a(v-bind:href="'/bundle/'+bundle[0][0].bundle" @click="go('/bundle/'+bundle[0][0].bundle,$event)")
+                                    .col.s8(v-html="stylizeHash(bundle[0][0].bundle)")
+                                    .col.s4.right-align
+                                        strong {{convertTimestamp(bundle[0][0].timestamp)}}
+                            .col.s12
+                                span(style="display:inline-block;" v-for="transaction in getOutputs(bundle[0])" v-if="isInput(bundle[0]) || searchedInput.includes(transaction.address)")
+                                    a(v-if="!searchedInput.includes(transaction.address)" v-bind:href="'/address/'+transaction.address" @click="go('/address/'+transaction.address,$event)" v-html="stylizeAddress(transaction.address)")
+                                    span(v-else-if="transaction.value!=0")
+                                        span(v-html="stylizeAddress(transaction.address)")
+                                        //-span(style="margin-left:5px;" @click="fiatView=!fiatView"   v-html="stylizeRelevantValueTransfered(transaction.value,'red')")
+                            .col.s12.center
+                                span(style="display:inline-block;" v-bind:class="{input: isInput(bundle[0]), output: !isInput(bundle[0])}")
+                                    i(class="small material-icons") arrow_forward
+                            .col.s12(class="right-align")
+                                span(style="display:inline-block;" v-for="transaction in getInputs(bundle[0])" v-if="transaction.value!=0 && (!isInput(bundle[0]) || searchedInput.includes(transaction.address))")
+                                    .col.s12(v-if="!searchedInput.includes(transaction.address) && transaction.value!=0")
+                                        a(v-bind:href="'/address/'+transaction.address" @click="go('/address/'+transaction.address,$event)" v-html="stylizeAddress(transaction.address)")
+                                        span(style="margin-left:5px;" class="quantity" @click="fiatView=!fiatView"   v-html="stylizeRelevantValueTransfered(transaction.value,'grey')")
+                                    .col.s12(v-else)
+                                        span(v-html="stylizeAddress(transaction.address)")
+                                        span(style="margin-left:5px;" class="quantity" @click="fiatView=!fiatView"   v-html="stylizeRelevantValueTransfered(transaction.value,'grey')")
+                                //-.row(class="grey-text" v-else)
+                                    //-span(v-if="transaction.signatureMessageFragment.match(/^[9]+$/) !== null") ADDRESS ATTACH TRANSACTION
+                                    //-span(v-else) SIGNATURE/MESSAGE
+                            .col.s12(style="margin-top:25px;" class="right-align")
+                                a(v-if="!bundleStates[bundle[0][0].bundle] && bundle.length > 1" class="waves-effect  btn blue white-text")
+                                    strong {{bundle.length-1}} {{bundle.length-1 === 1 ? 'REATTACHMENT' : 'REATTACHMENTS'}}
+                                a(v-if="!bundleStates[bundle[0][0].bundle] && (validAttachmentsByBundle[bundle[0][0].bundle] < bundle.length && validAttachmentsByBundle[bundle[0][0].bundle] > 0)" style="margin-left: 5px;" class="waves-effect  btn red darken-1 white-text")
+                                    strong {{bundle.length - validAttachmentsByBundle[bundle[0][0].bundle]}} Inconsistent {{bundle.length - validAttachmentsByBundle[bundle[0][0].bundle] > 1 ? 'attachments' : 'attachments'}}
+                                span(style="margin-left:5px;" v-if="bundleStates[bundle[0][0].bundle]")
+                                    a(class="waves-effect  btn green white-text" v-if="confirmedAttachmentsByBundle[bundle[0][0].bundle] === 1")
+                                        strong Confirmed
+                                    a(v-else class="waves-effect  btn green white-text")
+                                        strong {{confirmedAttachmentsByBundle[bundle[0][0].bundle]}}/{{bundle.length}} confirmed attachments
+                                strong(v-else)
+                                    a(v-if="validAttachmentsByBundle[bundle[0][0].bundle] > 0" style="margin-left:5px;" class="waves-effect  btn red darken-1 white-text") Pending
+                                    a(v-else-if="validAttachmentsByBundle[bundle[0][0].bundle] == 0" style="margin-left:5px;" class="waves-effect  btn red darken-1 white-text tooltipped" data-position="top" data-tooltip="Anatomy of the transaction is wrong, try reattach or broadcast it again") Inconsistent
+                                    a(v-else style="margin-left:5px;" class="waves-effect  btn red darken-1 white-text tooltipped" data-position="top" data-tooltip="Funds come from empty addresses") Inconsistent
+                                    a(v-if="validAttachmentsByBundle[bundle[0][0].bundle] > 0" style="margin-left:5px;z-index: 1;" @click="reattach(bundle,$event)" class="reattach btn black yellow-text tooltipped pulse" v-on:mouseover="removePulse" data-position="top" data-tooltip="Reattach transaction")
+                                        .preloader-wrapper.small(v-bind:class="{ active: reattaching === bundle[0][0].bundle}")
+                                            i(class="material-icons icon-flipped") replay
+                                    a(v-if="reattaching === bundle[0][0].bundle" style="margin-left:5px;" @click="stopReattach()" class="btn red darken-1")
+                                        i(class="material-icons") close
+                                        
+                                strong(style="margin-left:5px;" class="right-align quantity" @click="fiatView=!fiatView"   v-html="stylizeRelevantValueTransfered(getRelevantValueTransfered(bundle[0]))")
+                .container
+                    .row(class="center")
+                        .preloader-wrapper.small.active(v-if="searching")
+                            .spinner-layer.spinner-green-only
+                                .circle-clipper.left
+                                    .circle
+                                .gap-patch
+                                    .circle
+                                .circle-clipper.right
+                                    .circle
+                    .row.bundle(v-if="msg")
+                        p(v-html="msg")
+                    div(v-if="showRetry")
+                        a(@click="search" class="waves-effect waves-light btn yellow black-text") Retry
+                    div(v-if="searching && showCancel")
+                        p It's taking too long, the element queried is too big or/and the node is slow
+                        a(@click="cancelQuery" class="waves-effect waves-light btn yellow black-text") cancel query
+                
+                #qrModal.modal
+                    .modal-content(class="center")
+                        div(id="qrcode")
+
+                .container(v-if="!showRetry && !searching && !balance && !bundle")
+                    .row(class="valign-wrapper center")
+                        .col.s12(style="padding-bottom:30px;")
+                            h4 what are you looking for?
+                            form(@submit.prevent="search")
+                                .input-field
+                                    input(id="search" v-model="searchInput" type="text" required placeholder="Transaction, Bundle or Address" class="grey-text" pattern="[A-Z9]+" autocomplete="off" autofocus)
+                                    label(class="label-icon" for="search")
+                    .row
+                        .col.s12(class="center")
+                            h4 donate
+                            a(@click="go('/address/PNJIPFNUOTZLRMNZWBGOOXGBRHETOUJFLKWXIFPGKKQKRRDRFIOILBVGGBLFENZMXIZLNVBBIEUFCYVPDVPZFIWALZ',$event)" v-html="stylizeAddress('PNJIPFNUOTZLRMNZWBGOOXGBRHETOUJFLKWXIFPGKKQKRRDRFIOILBVGGBLFENZMXIZLNVBBIEUFCYVPD')")
+                            button(class="btn black waves-effect donate white-text tooltipped copy" data-position="top" @click="toast('Copied!')" data-tooltip="Copy" data-clipboard-text="PNJIPFNUOTZLRMNZWBGOOXGBRHETOUJFLKWXIFPGKKQKRRDRFIOILBVGGBLFENZMXIZLNVBBIEUFCYVPDVPZFIWALZ")
+                                i(class="material-icons") content_copy
+                            button(style="margin-left:5px;" class="btn black waves-effect white-text" @click="viewQr('PNJIPFNUOTZLRMNZWBGOOXGBRHETOUJFLKWXIFPGKKQKRRDRFIOILBVGGBLFENZMXIZLNVBBIEUFCYVPDVPZFIWALZ')" v-bind:data-clipboard-text="searchedInput") QR
+
+        footer(class='page-footer black')
+            div(class='container')
+                div(class='row')
+                    div(class='col l6 s12')
+                        h5(class='white-text') Exploiota.com
+                        p(class='grey-text text-lighten-4') 
+                    div(class='col l3 s12')
+                    div(class='col l3 s12')
+            div(class='footer-copyright')
+                div(class='container')
+                    span(class="orange-text text-lighten-3") Exploiota.com
+        script(src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0-rc.2/js/materialize.min.js")
+        script(src="https://cdn.jsdelivr.net/npm/vue@2.5.16/dist/vue.min.js")
+        script(src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.0/clipboard.min.js")
+        script(src="https://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous")
+        script(src="/javascript/qrcode.min.js")
+        script(src="/javascript/iota.min.js")
+        script(src="/javascript/main.js")
+        script(async src="https://www.googletagmanager.com/gtag/js?id=UA-122704816-1")
+        script window.dataLayer = window.dataLayer || [];function gtag(){dataLayer.push(arguments);};gtag('js', new Date());gtag('config', 'UA-122704816-1');

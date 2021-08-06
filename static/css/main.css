@@ -1,0 +1,87 @@
+.address {
+    word-break: break-all;
+}
+
+.addressStart, .addressEnd {
+    font-size:100%;
+}
+.addressSemiMiddle {
+    font-size:70%;
+}
+.addressMiddle {
+    font-size:70%;
+}
+
+.addressChecksum {
+    color: grey;
+}
+a {
+    outline: 0;
+    cursor: pointer;
+    color:#005b7d;
+}
+a .addressChecksum {
+    outline: 0;
+    cursor: pointer;
+    color: #85d6f3;
+}
+.bundle {
+    word-break: break-all;
+}
+.bundleHeader {
+    background-color: #10ade424;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+    margin-bottom: 25px;
+    border-top: 1px solid #10ade8;
+    border-bottom: 1px solid #10ade8;
+}
+.bundleHeader a {
+    color:#005b7d;
+}
+.input {
+    color:green;
+    margin-left:5px;
+    margin-right:5px;
+}
+.output {
+    color:red;
+    margin-right:5px;
+    margin-left:5px;
+}
+.icon-flipped {
+    -o-transform: scaleX(-1);
+    -moz-transform: scaleX(-1);
+    -webkit-transform: scaleX(-1);
+    -ms-transform: scaleX(-1);
+    transform: scaleX(-1);
+}
+body {
+    display: flex;
+    min-height: 100vh;
+    flex-direction: column;
+}
+#app {
+    flex: 1 0 auto;
+}
+.copy {
+    margin-left:10px;
+}
+.donate {
+    margin-left:10px;
+}
+
+#qrcode img {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+    width: 50%;
+}
+
+.input-field input[type=text]:focus {
+    border-bottom: 1px solid #000;
+    box-shadow: 0 1px 0 0 #000;
+}
+.input-field input[type=text]:focus + label {
+    color: #000;
+  }
